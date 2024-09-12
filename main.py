@@ -11,9 +11,7 @@ import shutil
 
 
 def create_temp_dir() -> str:
-    temp_dir = "/temp"
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+    temp_dir = tempfile.mkdtemp(prefix="transcribo_")
     return temp_dir
 
 
@@ -59,12 +57,7 @@ def transcribe_audio(audio_file: str) -> str:
 
 def clean_temp_dir(temp_dir: str):
     try:
-        for filename in os.listdir(temp_dir):
-            file_path = os.path.join(temp_dir, filename)
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
+        shutil.rmtree(temp_dir)
     except Exception as e:
         st.error(f"Error cleaning temporary directory: {e}")
 

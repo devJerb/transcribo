@@ -7,17 +7,28 @@ import moviepy.editor as mp
 import speech_recognition as sr
 
 from uuid import uuid4
-from pydub import AudioSegment
 from typing import List, Optional
 
 
+# Define memory limit
 MEMORY_LIMIT_GB = 1
 
 
+# Ensure temp directory exists
 def create_temp_dir(directory: str = "./temp") -> str:
     if not os.path.exists(directory):
         os.mkdir(directory)
     return directory
+
+
+def check_memory_usage(limit_gb=MEMORY_LIMIT_GB):
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    mem_in_gb = mem_info.rss / (1024**3)  # Convert to GB
+
+    if mem_in_gb > limit_gb:
+        st.error("Memory usage exceeded! Processing stopped to prevent crashes.")
+        st.stop()
 
 
 def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
@@ -36,49 +47,38 @@ def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
             raise FileNotFoundError(f"Video file not found: {video_file}")
 
         video = mp.VideoFileClip(video_file)
-        audio_path = os.path.join(temp_dir, f"{str(uuid4())}.mp3")
-        video.audio.write_audiofile(
-            audio_path, codec="mp3", bitrate="64k"
-        )  # Lower quality
-        video.close()  # Free memory
+        audio_path = os.path.join(temp_dir, f"{str(uuid4())}.wav")
+        video.audio.write_audiofile(filename=audio_path, bitrate="64k")
+        video.close()
         return audio_path
     except FileNotFoundError as e:
         print(f"File not found: {e}")
     except Exception as e:
-        print(f"Unable to extract audio: {e}")
+        print(f"Unable to extract audio, {e}")
     return None
 
 
-def check_memory_usage(limit_gb=1.5):
-    process = psutil.Process(os.getpid())
-    mem_info = process.memory_info()
-    mem_in_gb = mem_info.rss / (1024**1)  # Convert to GB
-
-    if mem_in_gb > limit_gb:
-        st.error("Memory usage exceeded! Processing stopped to prevent crashes.")
-        st.stop()
-
-
-def to_chunks(audio_file: str, chunk_duration: int, temp_dir: str) -> List[str]:
+def to_chunks(video_file: str, chunk_duration: int, temp_dir: str) -> List[str]:
     """
-    Splits an audio file into smaller chunks.
+    Splits a video file into smaller chunks and extracts audio from each chunk.
 
     Args:
-        audio_file (str): Path to the audio file.
-        chunk_length_ms (float): Length of each chunk in milliseconds.
+        video_file (str): Path to the video file.
+        chunk_duration (int): Duration of each chunk in seconds.
         temp_dir (str): Path to the temporary directory.
 
     Returns:
-        List[str]: List of paths to audio chunks or empty list if failed.
+        List[str]: List of paths to video chunks and their corresponding audio chunks or empty list if failed.
     """
     try:
-        if not os.path.exists(audio_file):
-            raise FileNotFoundError(f"Video file not found: {audio_file}")
+        if not os.path.exists(video_file):
+            raise FileNotFoundError(f"Video file not found: {video_file}")
 
-        video = mp.VideoFileClip(audio_file)
+        video = mp.VideoFileClip(video_file)
         duration = video.duration  # Get the total duration of the video in seconds
         num_chunks = int(duration // chunk_duration) + 1
-        chunks = []
+        video_chunks = []
+        audio_chunks = []
 
         # Process each chunk
         for i in range(num_chunks):
@@ -91,21 +91,28 @@ def to_chunks(audio_file: str, chunk_duration: int, temp_dir: str) -> List[str]:
 
             # Extract a subclip from the video
             subclip = video.subclip(start_time, end_time)
-            chunk_path = os.path.join(temp_dir, f"video_chunk_{i}.mp4")
-            subclip.write_videofile(chunk_path, codec="libx264", audio_codec="aac")
+            video_chunk_path = os.path.join(temp_dir, f"video_chunk_{i}.mp4")
+            subclip.write_videofile(
+                video_chunk_path, codec="libx264", audio_codec="aac"
+            )
+            video_chunks.append(video_chunk_path)
+
+            # Extract audio from the subclip
+            audio_chunk_path = os.path.join(temp_dir, f"audio_chunk_{i}.wav")
+            subclip.audio.write_audiofile(audio_chunk_path, bitrate="64k")
+            audio_chunks.append(audio_chunk_path)
+
             subclip.close()  # Free memory after processing the chunk
             gc.collect()  # Force garbage collection to free up memory
 
-            chunks.append(chunk_path)
-
         video.close()  # Free memory after processing the entire video
-        return chunks
+        return video_chunks, audio_chunks
 
     except FileNotFoundError as e:
         print(f"File not found: {e}")
     except Exception as e:
         print(f"Unable to process video: {e}")
-    return []
+    return [], []
 
 
 def transcribe_audio(audio_file: str) -> str:
@@ -161,32 +168,27 @@ def main():
 
             st.video(temp_video)
 
-            # Extract audio and display progress
-            with st.spinner("Extracting audio..."):
-                audio_path = extract_audio(temp_video, temp_dir)
-                if audio_path:
-                    st.success("Audio extracted successfully. 🚀")
+            # Extract audio and split video into chunks
+            with st.spinner("Processing video and extracting audio..."):
+                video_chunks, audio_chunks = to_chunks(temp_video, 600, temp_dir)
+                if video_chunks and audio_chunks:
+                    st.success(
+                        f"Video and audio split into {len(video_chunks)} chunks. 🧩"
+                    )
                 else:
-                    st.error("Failed to extract audio.")
-                    return
-
-            # Split audio into chunks
-            with st.spinner("Splitting audio into chunks..."):
-                audio_chunks = to_chunks(audio_path, 80000, temp_dir)
-                if audio_chunks:
-                    st.success(f"Audio split into {len(audio_chunks)} chunks. 🛰")
-                else:
-                    st.error("Failed to split audio into chunks.")
+                    st.error("Failed to process video or audio.")
                     return
 
             transcription_placeholder = st.empty()
             transcription_result = ""
 
-            # Transcribe each chunk
+            # Transcribe each audio chunk
             for i, chunk in enumerate(audio_chunks):
-                with st.spinner(f"Transcribing chunk {i + 1} / {len(audio_chunks)}..."):
+                with st.spinner(
+                    f"Transcribing audio chunk {i + 1} / {len(audio_chunks)}..."
+                ):
                     chunk_transcription = transcribe_audio(chunk)
-                    transcription_result += f"{chunk_transcription}"
+                    transcription_result += f"{chunk_transcription} "
 
                     # Update the placeholder per chunk progress
                     transcription_placeholder.text_area(
@@ -213,7 +215,7 @@ def main():
                 if not os.listdir(temp_dir):
                     os.rmdir(temp_dir)
             except Exception as e:
-                print(f"Unable to clean up temporary data, {e}")
+                print(f"Unable to clean up temporary data: {e}")
 
 
 if __name__ == "__main__":

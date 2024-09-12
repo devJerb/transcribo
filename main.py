@@ -11,16 +11,41 @@ import shutil
 
 
 def create_temp_dir() -> str:
-    temp_dir = tempfile.mkdtemp(prefix="transcribo_")
-    return temp_dir
+    return tempfile.mkdtemp(prefix="transcribo_")
 
 
-def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
+def extract_audio(
+    video_file: str, temp_dir: str, chunk_duration: int = 300
+) -> Optional[str]:
     try:
         with mp.VideoFileClip(video_file) as video:
-            audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
-            video.audio.write_audiofile(audio_path, codec="pcm_s16le")
-        return audio_path
+            total_duration = video.duration
+            audio_paths = []
+
+            for start_time in range(0, int(total_duration), chunk_duration):
+                end_time = min(start_time + chunk_duration, total_duration)
+                chunk = video.subclip(start_time, end_time)
+
+                chunk_audio_path = os.path.join(
+                    temp_dir, f"audio_chunk_{start_time}_{end_time}.wav"
+                )
+                chunk.audio.write_audiofile(chunk_audio_path, codec="pcm_s16le")
+                audio_paths.append(chunk_audio_path)
+
+                del chunk
+                gc.collect()
+
+            # Combine all audio chunks
+            combined_audio = AudioSegment.empty()
+            for audio_path in audio_paths:
+                chunk = AudioSegment.from_wav(audio_path)
+                combined_audio += chunk
+                os.remove(audio_path)  # Remove individual chunk file
+
+            final_audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
+            combined_audio.export(final_audio_path, format="wav")
+
+            return final_audio_path
     except Exception as e:
         st.error(f"Unable to extract audio: {e}")
     return None

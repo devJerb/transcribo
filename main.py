@@ -8,22 +8,39 @@ from typing import List, Optional
 import tempfile
 import gc
 import shutil
+import math
 
 
 def create_temp_dir() -> str:
     return tempfile.mkdtemp(prefix="transcribo_")
 
 
-def extract_audio(
-    video_file: str, temp_dir: str, chunk_duration: int = 200
-) -> Optional[str]:
+def calculate_chunk_duration(
+    total_duration: float,
+    target_chunks: int = 20,
+    min_chunk_duration: int = 30,
+    max_chunk_duration: int = 300,
+) -> int:
+    chunk_duration = max(
+        min_chunk_duration,
+        min(max_chunk_duration, math.ceil(total_duration / target_chunks)),
+    )
+    return chunk_duration
+
+
+def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
     try:
         with mp.VideoFileClip(video_file) as video:
             total_duration = video.duration
+            chunk_duration = calculate_chunk_duration(total_duration)
             audio_paths = []
 
             extraction_progress = st.progress(0)
             extraction_status = st.empty()
+
+            st.info(
+                f"Video duration: {total_duration:.1f} seconds. Processing in chunks of {chunk_duration} seconds."
+            )
 
             for start_time in range(0, int(total_duration), chunk_duration):
                 end_time = min(start_time + chunk_duration, total_duration)
@@ -38,13 +55,15 @@ def extract_audio(
                 audio_paths.append(chunk_audio_path)
 
                 progress = end_time / total_duration
-                extraction_progress.progress(
-                    progress,
-                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s",
+                extraction_progress.progress(progress)
+                extraction_status.text(
+                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s"
                 )
 
                 del chunk
                 gc.collect()
+
+            extraction_status.text("Combining audio chunks...")
 
             # Combine all audio chunks
             combined_audio = AudioSegment.empty()
@@ -56,7 +75,7 @@ def extract_audio(
             final_audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
             combined_audio.export(final_audio_path, format="wav")
 
-            extraction_status.success("Audio extraction completed.")
+            extraction_status.text("Audio extraction completed.")
             return final_audio_path
     except Exception as e:
         st.error(f"Unable to extract audio: {e}")

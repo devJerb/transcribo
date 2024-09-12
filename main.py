@@ -82,7 +82,7 @@ def main():
             with st.spinner("Extracting audio..."):
                 audio_path = extract_audio(temp_video_path, temp_dir)
                 if audio_path:
-                    st.success("Audio chunk extracted successfully. 🧩")
+                    st.success("Audio extracted successfully. 🧩")
                 else:
                     st.error("Failed to extract audio.")
                     return

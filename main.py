@@ -107,7 +107,9 @@ def clean_temp_dir(temp_dir: str):
 
 def main():
     st.set_page_config(page_title="Transcribo")
-    st.info(f"Available for videos that have a duration of less than an hour.")
+    st.info(
+        "Available for videos that have a duration of less than 1 hour and 30 minutes."
+    )
     st.title("Video to Text Transcription 📠")
     st.write("Upload a video file, and it will be transcribed to text.")
 
@@ -120,6 +122,16 @@ def main():
             temp_video_path = os.path.join(temp_dir, f"{uuid4()}.mp4")
             with open(temp_video_path, "wb") as temp_video:
                 temp_video.write(video_file.getbuffer())
+
+            # Check video duration
+            with mp.VideoFileClip(temp_video_path) as video:
+                video_duration = video.duration
+                if video_duration > 5400:  # 90 minutes in seconds
+                    st.error(
+                        "Video duration exceeds 1 hour and 30 minutes. Please upload a shorter video."
+                    )
+                    clean_temp_dir(temp_dir)
+                    return
 
             st.video(temp_video_path)
 

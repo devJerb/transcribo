@@ -22,6 +22,9 @@ def extract_audio(
             total_duration = video.duration
             audio_paths = []
 
+            extraction_progress = st.progress(0)
+            extraction_status = st.empty()
+
             for start_time in range(0, int(total_duration), chunk_duration):
                 end_time = min(start_time + chunk_duration, total_duration)
                 chunk = video.subclip(start_time, end_time)
@@ -29,11 +32,21 @@ def extract_audio(
                 chunk_audio_path = os.path.join(
                     temp_dir, f"audio_chunk_{start_time}_{end_time}.wav"
                 )
-                chunk.audio.write_audiofile(chunk_audio_path, codec="pcm_s16le")
+                chunk.audio.write_audiofile(
+                    chunk_audio_path, codec="pcm_s16le", logger=None
+                )
                 audio_paths.append(chunk_audio_path)
+
+                progress = end_time / total_duration
+                extraction_progress.progress(progress)
+                extraction_status.text(
+                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s"
+                )
 
                 del chunk
                 gc.collect()
+
+            extraction_status.text("Combining audio chunks...")
 
             # Combine all audio chunks
             combined_audio = AudioSegment.empty()
@@ -45,6 +58,7 @@ def extract_audio(
             final_audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
             combined_audio.export(final_audio_path, format="wav")
 
+            extraction_status.text("Audio extraction completed.")
             return final_audio_path
     except Exception as e:
         st.error(f"Unable to extract audio: {e}")
@@ -104,14 +118,13 @@ def main():
 
             st.video(temp_video_path)
 
-            with st.spinner("Extracting audio..."):
-                audio_path = extract_audio(temp_video_path, temp_dir)
-                if audio_path:
-                    st.success("Audio extracted successfully. 🧩")
-                else:
-                    st.error("Failed to extract audio.")
-                    return
+            st.write("Step 1: Extracting Audio")
+            audio_path = extract_audio(temp_video_path, temp_dir)
+            if not audio_path:
+                st.error("Failed to extract audio.")
+                return
 
+            st.write("Step 2: Splitting Audio into Chunks")
             with st.spinner("Splitting audio into chunks..."):
                 audio_chunks = to_chunks(
                     audio_path, 30000, temp_dir
@@ -122,14 +135,18 @@ def main():
                     st.error("Failed to split audio into chunks.")
                     return
 
+            st.write("Step 3: Transcribing Audio Chunks")
             transcription_placeholder = st.empty()
             transcription_result = []
 
-            progress_bar = st.progress(0)
+            transcription_progress = st.progress(0)
+            transcription_status = st.empty()
+
             for i, chunk in enumerate(audio_chunks):
                 progress = (i + 1) / len(audio_chunks)
-                progress_bar.progress(
-                    progress, f"{i + 1} / {len(audio_chunks)} chunks completed"
+                transcription_progress.progress(progress)
+                transcription_status.text(
+                    f"Transcribing chunk {i + 1} / {len(audio_chunks)}"
                 )
 
                 chunk_transcription = transcribe_audio(chunk)
@@ -145,7 +162,7 @@ def main():
                 os.remove(chunk)
                 gc.collect()
 
-            st.success("Transcription completed. 🚀")
+            transcription_status.text("Transcription completed. 🚀")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")

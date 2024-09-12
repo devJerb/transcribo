@@ -107,6 +107,7 @@ def clean_temp_dir(temp_dir: str):
 
 def main():
     st.set_page_config(page_title="Transcribo")
+    st.info(f"Available for videos that have a duration of less than an hour.")
     st.title("Video to Text Transcription 📠")
     st.write("Upload a video file, and it will be transcribed to text.")
 

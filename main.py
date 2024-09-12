@@ -1,4 +1,7 @@
 import os
+import gc
+import psutil
+
 import streamlit as st
 import moviepy.editor as mp
 import speech_recognition as sr
@@ -8,7 +11,9 @@ from pydub import AudioSegment
 from typing import List, Optional
 
 
-# Ensure temp directory exists
+MEMORY_LIMIT_GB = 1
+
+
 def create_temp_dir(directory: str = "./temp") -> str:
     if not os.path.exists(directory):
         os.mkdir(directory)
@@ -31,17 +36,30 @@ def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
             raise FileNotFoundError(f"Video file not found: {video_file}")
 
         video = mp.VideoFileClip(video_file)
-        audio_path = os.path.join(temp_dir, f"{str(uuid4())}.wav")
-        video.audio.write_audiofile(audio_path)
+        audio_path = os.path.join(temp_dir, f"{str(uuid4())}.mp3")
+        video.audio.write_audiofile(
+            audio_path, codec="mp3", bitrate="64k"
+        )  # Lower quality
+        video.close()  # Free memory
         return audio_path
     except FileNotFoundError as e:
         print(f"File not found: {e}")
     except Exception as e:
-        print(f"Unable to extract audio, {e}")
+        print(f"Unable to extract audio: {e}")
     return None
 
 
-def to_chunks(audio_file: str, chunk_length_ms: float, temp_dir: str) -> List[str]:
+def check_memory_usage(limit_gb=1.5):
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    mem_in_gb = mem_info.rss / (1024**1)  # Convert to GB
+
+    if mem_in_gb > limit_gb:
+        st.error("Memory usage exceeded! Processing stopped to prevent crashes.")
+        st.stop()
+
+
+def to_chunks(audio_file: str, chunk_duration: int, temp_dir: str) -> List[str]:
     """
     Splits an audio file into smaller chunks.
 
@@ -55,22 +73,38 @@ def to_chunks(audio_file: str, chunk_length_ms: float, temp_dir: str) -> List[st
     """
     try:
         if not os.path.exists(audio_file):
-            raise FileNotFoundError(f"Audio file not found: {audio_file}")
+            raise FileNotFoundError(f"Video file not found: {audio_file}")
 
-        audio = AudioSegment.from_wav(audio_file)
+        video = mp.VideoFileClip(audio_file)
+        duration = video.duration  # Get the total duration of the video in seconds
+        num_chunks = int(duration // chunk_duration) + 1
         chunks = []
-        for i in range(0, len(audio), int(chunk_length_ms)):
-            chunk = audio[i : i + int(chunk_length_ms)]
-            chunk_path = os.path.join(
-                temp_dir, f"chunk_{i // int(chunk_length_ms)}.wav"
-            )
-            chunk.export(chunk_path, format="wav")
+
+        # Process each chunk
+        for i in range(num_chunks):
+            check_memory_usage(
+                MEMORY_LIMIT_GB
+            )  # Check memory before processing each chunk
+
+            start_time = i * chunk_duration
+            end_time = min((i + 1) * chunk_duration, duration)
+
+            # Extract a subclip from the video
+            subclip = video.subclip(start_time, end_time)
+            chunk_path = os.path.join(temp_dir, f"video_chunk_{i}.mp4")
+            subclip.write_videofile(chunk_path, codec="libx264", audio_codec="aac")
+            subclip.close()  # Free memory after processing the chunk
+            gc.collect()  # Force garbage collection to free up memory
+
             chunks.append(chunk_path)
+
+        video.close()  # Free memory after processing the entire video
         return chunks
+
     except FileNotFoundError as e:
         print(f"File not found: {e}")
     except Exception as e:
-        print(f"Unable to create chunks, {e}")
+        print(f"Unable to process video: {e}")
     return []
 
 
@@ -169,15 +203,15 @@ def main():
         finally:
             # Clean up temporary files
             try:
-                temp_files = os.listdir("./temp")
+                temp_files = os.listdir(temp_dir)
                 for file in temp_files:
-                    file_path = os.path.join("./temp", file)
+                    file_path = os.path.join(temp_dir, file)
                     if os.path.exists(file_path):
                         os.remove(file_path)
 
                 # Optionally remove the directory itself if empty
-                if not os.listdir("./temp"):
-                    os.rmdir("./temp")
+                if not os.listdir(temp_dir):
+                    os.rmdir(temp_dir)
             except Exception as e:
                 print(f"Unable to clean up temporary data, {e}")
 

@@ -1,5 +1,8 @@
-streamlit
-moviepy
 SpeechRecognition
+moviepy
 pydub
+
+psutil
 uuid
+
+streamlit

@@ -15,7 +15,7 @@ def create_temp_dir() -> str:
 
 
 def extract_audio(
-    video_file: str, temp_dir: str, chunk_duration: int = 100
+    video_file: str, temp_dir: str, chunk_duration: int = 50
 ) -> Optional[str]:
     try:
         with mp.VideoFileClip(video_file) as video:

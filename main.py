@@ -85,25 +85,20 @@ def transcribe_audio(audio_file: str) -> str:
         str: Transcription result or '[Inaudible response]' if failed.
     """
     recognizer = sr.Recognizer()
-    total_attempts = 3
 
     try:
         if not os.path.exists(audio_file):
             raise FileNotFoundError(f"Audio file not found: {audio_file}")
 
-        for attempt in range(total_attempts):
-            with sr.AudioFile(audio_file) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    text = recognizer.recognize_google(audio_data)
-                    return text
-                except sr.UnknownValueError:
-                    print(
-                        f"Attempt {attempt + 1} / {total_attempts}: Unable to understand audio."
-                    )
-                except sr.RequestError as e:
-                    print(f"Google API request failed: {e}")
-            print(f"Attempt {attempt + 1} / {total_attempts}")
+        with sr.AudioFile(audio_file) as source:
+            audio_data = recognizer.record(source)
+            try:
+                text = recognizer.recognize_google(audio_data)
+                return text
+            except sr.UnknownValueError:
+                print("Unable to understand inaudible response.")
+            except sr.RequestError as e:
+                print(f"Google API request failed: {e}")
     except FileNotFoundError as e:
         print(f"File not found: {e}")
     except Exception as e:
@@ -179,7 +174,7 @@ def main():
                     file_path = os.path.join("./temp", file)
                     if os.path.exists(file_path):
                         os.remove(file_path)
-                        
+
                 # Optionally remove the directory itself if empty
                 if not os.listdir("./temp"):
                     os.rmdir("./temp")

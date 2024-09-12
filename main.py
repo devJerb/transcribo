@@ -38,15 +38,13 @@ def extract_audio(
                 audio_paths.append(chunk_audio_path)
 
                 progress = end_time / total_duration
-                extraction_progress.progress(progress)
-                extraction_status.text(
-                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s"
+                extraction_progress.progress(
+                    progress,
+                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s",
                 )
 
                 del chunk
                 gc.collect()
-
-            extraction_status.text("Combining audio chunks...")
 
             # Combine all audio chunks
             combined_audio = AudioSegment.empty()
@@ -58,7 +56,7 @@ def extract_audio(
             final_audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
             combined_audio.export(final_audio_path, format="wav")
 
-            extraction_status.text("Audio extraction completed.")
+            extraction_status.success("Audio extraction completed.")
             return final_audio_path
     except Exception as e:
         st.error(f"Unable to extract audio: {e}")
@@ -144,9 +142,8 @@ def main():
 
             for i, chunk in enumerate(audio_chunks):
                 progress = (i + 1) / len(audio_chunks)
-                transcription_progress.progress(progress)
-                transcription_status.text(
-                    f"Transcribing chunk {i + 1} / {len(audio_chunks)}"
+                transcription_progress.progress(
+                    progress, f"Transcribing chunk {i + 1} / {len(audio_chunks)}"
                 )
 
                 chunk_transcription = transcribe_audio(chunk)
@@ -162,7 +159,7 @@ def main():
                 os.remove(chunk)
                 gc.collect()
 
-            transcription_status.text("Transcription completed. 🚀")
+            transcription_status.success("Transcription completed. 🚀")
 
         except Exception as e:
             st.error(f"An error occurred: {e}")

@@ -1,8 +1,11 @@
+# asr
 SpeechRecognition
 moviepy
 pydub
 
+# utility
 psutil
 uuid
 
+# deploy
 streamlit

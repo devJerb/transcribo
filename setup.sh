@@ -12,5 +12,7 @@ mv ffmpeg-*-static/ffmpeg ffmpeg-*-static/ffprobe .
 # Clean up
 rm -rf ffmpeg.tar.xz ffmpeg-*-static
 
-# Ensure FFmpeg is executable
+# Ensure binaries are executable
 chmod +x ffmpeg ffprobe
+
+echo "FFmpeg setup complete!"

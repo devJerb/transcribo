@@ -2,6 +2,7 @@
 SpeechRecognition
 moviepy
 pydub
+ffmpeg
 
 # utility
 psutil

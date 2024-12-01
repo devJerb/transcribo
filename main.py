@@ -1,6 +1,5 @@
 import os
 import streamlit as st
-import moviepy.editor as mp
 import speech_recognition as sr
 from uuid import uuid4
 from pydub import AudioSegment
@@ -8,65 +7,28 @@ from typing import List, Optional
 import tempfile
 import gc
 import shutil
+from pydub.utils import which
+
+
+AudioSegment.converter = "./ffmpeg"
+AudioSegment.ffprobe = "./ffprobe"
 
 
 def create_temp_dir() -> str:
     return tempfile.mkdtemp(prefix="transcribo_")
 
 
-def extract_audio(
-    video_file: str,
-    temp_dir: str,
-    chunk_duration: int = os.environ.get("CHUNK_DURATION") or 100,
-) -> Optional[str]:
+def extract_audio(video_file: str, temp_dir: str) -> Optional[str]:
     try:
-        with mp.VideoFileClip(video_file) as video:
-            total_duration = video.duration
-            audio_paths = []
-
-            extraction_progress = st.progress(0)
-            extraction_status = st.empty()
-
-            st.info(
-                f"Video duration: {total_duration:.1f} seconds. Processing in chunks of {chunk_duration} seconds."
-            )
-
-            for start_time in range(0, int(total_duration), chunk_duration):
-                end_time = min(start_time + chunk_duration, total_duration)
-                chunk = video.subclip(start_time, end_time)
-
-                chunk_audio_path = os.path.join(
-                    temp_dir, f"audio_chunk_{start_time}_{end_time}.wav"
-                )
-                chunk.audio.write_audiofile(
-                    chunk_audio_path, codec="pcm_s16le", logger=None
-                )
-                audio_paths.append(chunk_audio_path)
-
-                progress = end_time / total_duration
-                extraction_progress.progress(
-                    progress,
-                    f"Extracting audio: {end_time:.1f}s / {total_duration:.1f}s",
-                )
-
-                del chunk
-                gc.collect()
-
-            # Combine all audio chunks
-            combined_audio = AudioSegment.empty()
-            for audio_path in audio_paths:
-                chunk = AudioSegment.from_wav(audio_path)
-                combined_audio += chunk
-                os.remove(audio_path)  # Remove individual chunk file
-
-            final_audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
-            combined_audio.export(final_audio_path, format="wav")
-
-            extraction_status.success("Audio extraction completed.")
-            return final_audio_path
+        st.info("Extracting audio from video...")
+        audio_path = os.path.join(temp_dir, f"{uuid4()}.wav")
+        audio = AudioSegment.from_file(video_file)
+        audio.export(audio_path, format="wav")
+        st.success("Audio extraction completed.")
+        return audio_path
     except Exception as e:
         st.error(f"Unable to extract audio: {e}")
-    return None
+        return None
 
 
 def to_chunks(audio_file: str, chunk_length_ms: int, temp_dir: str) -> List[str]:
@@ -80,7 +42,7 @@ def to_chunks(audio_file: str, chunk_length_ms: int, temp_dir: str) -> List[str]
         return chunks
     except Exception as e:
         st.error(f"Unable to create chunks: {e}")
-    return []
+        return []
 
 
 def transcribe_audio(audio_file: str) -> str:
@@ -123,16 +85,7 @@ def main():
             with open(temp_video_path, "wb") as temp_video:
                 temp_video.write(video_file.getbuffer())
 
-            # Check video duration
-            with mp.VideoFileClip(temp_video_path) as video:
-                video_duration = video.duration
-                if video_duration > 5400:  # 90 minutes in seconds
-                    st.error(
-                        "Video duration exceeds 1 hour and 30 minutes. Please upload a shorter video."
-                    )
-                    clean_temp_dir(temp_dir)
-                    return
-
+            # Check video duration (Optional: Remove if duration check isn't required)
             st.video(temp_video_path)
 
             st.write("Step 1: Extracting Audio")

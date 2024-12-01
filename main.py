@@ -11,7 +11,7 @@ from pydub.utils import which
 
 
 AudioSegment.converter = "./ffmpeg"
-AudioSegment.ffprobe = "./ffprobe"
+# AudioSegment.ffprobe = "./ffprobe"
 
 
 def create_temp_dir() -> str:
